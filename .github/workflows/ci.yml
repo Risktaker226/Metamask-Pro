@@ -9,13 +9,8 @@ on:
     types: [checks_requested]
   schedule:
     - cron: '0 2-6 * * *'
-  workflow_call:        # <— ✅ cette ligne rend ton workflow réutilisable
-    inputs:
-      branch:
-        description: "Branche sur laquelle lancer le workflow manuellement"
-        required: false
-        default: main
-        
+
+      
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ !(contains(github.ref, 'refs/heads/main') || contains(github.ref, 'refs/heads/stable')) }}
