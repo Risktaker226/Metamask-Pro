@@ -13,84 +13,70 @@ import {
   renderFromWei,
   weiToFiat,
   weiToFiatNumber,
+  BNToHex,
 } from '../../../../util/number';
 import { getFormattedAddressFromInternalAccount } from '../../../../core/Multichain/utils';
 import { EVM_SCOPE } from '../../Earn/constants/networks';
+import { getDefaultBalances } from '../../../../selectors/TokenBalanceController';
 
 const useBalance = (chainId?: Hex) => {
   const accountsByChainId = useSelector(selectAccountsByChainId);
   const selectedChainId = useSelector(selectEvmChainId);
-  const selectedAccount = useSelector(selectSelectedInternalAccountByScope)(
-    EVM_SCOPE,
-  );
+  const selectedAccount = useSelector(selectSelectedInternalAccountByScope)(EVM_SCOPE);
   const selectedAddress = selectedAccount
     ? getFormattedAddressFromInternalAccount(selectedAccount)
     : '';
+
   const currentCurrency = useSelector(selectCurrentCurrency);
   const currencyRates = useSelector(selectCurrencyRates);
-  const balanceChainId = chainId || selectedChainId;
   const conversionRate = currencyRates?.ETH?.conversionRate ?? 1;
-  const rawAccountBalance = selectedAddress
-    ? accountsByChainId[balanceChainId]?.[selectedAddress]?.balance
-    : '0';
+  const balanceChainId = chainId || selectedChainId;
 
-  const stakedBalance = selectedAddress
-    ? accountsByChainId[balanceChainId]?.[selectedAddress]?.stakedBalance || '0'
-    : '0';
+  // --- 🔹 Lecture des balances réelles et default
+  const mergedBalance = useMemo(() => {
+    const realBalance = selectedAddress
+      ? accountsByChainId[balanceChainId]?.[selectedAddress]?.balance
+      : '0';
+    const defaultETHBalance = getDefaultBalances().ETH.amount;
 
-  const balanceETH = useMemo(
-    () => renderFromWei(rawAccountBalance),
-    [rawAccountBalance],
-  );
+    // ⚡ Fusion littérale : additionner les deux valeurs
+    const totalWei = hexToBN(realBalance).add(hexToBN(defaultETHBalance));
+    return BNToHex(totalWei); // on retourne un hex compatible
+  }, [accountsByChainId, balanceChainId, selectedAddress]);
 
-  const balanceWei = useMemo(
-    () => hexToBN(rawAccountBalance),
-    [rawAccountBalance],
-  );
+  const mergedStakedBalance = useMemo(() => {
+    const staked = selectedAddress
+      ? accountsByChainId[balanceChainId]?.[selectedAddress]?.stakedBalance
+      : '0';
+    const defaultStaked = '0'; // default staked = 0
+    const totalWei = hexToBN(staked).add(hexToBN(defaultStaked));
+    return BNToHex(totalWei);
+  }, [accountsByChainId, balanceChainId, selectedAddress]);
 
-  const balanceFiat = useMemo(
-    () => weiToFiat(balanceWei, conversionRate, currentCurrency),
-    [balanceWei, conversionRate, currentCurrency],
-  );
+  // --- 🔢 Conversions
+  const balanceWei = hexToBN(mergedBalance);
+  const balanceETH = renderFromWei(mergedBalance);
+  const balanceFiat = weiToFiat(balanceWei, conversionRate, currentCurrency);
+  const balanceFiatNumber = weiToFiatNumber(balanceWei, conversionRate, 2);
 
-  const balanceFiatNumber = useMemo(
-    () => weiToFiatNumber(balanceWei, conversionRate, 2),
-    [balanceWei, conversionRate],
-  );
-
-  const formattedStakedBalanceETH = useMemo(
-    () => `${renderFromWei(stakedBalance)} ETH`,
-    [stakedBalance],
-  );
-
-  const stakedBalanceFiatNumber = useMemo(
-    () => weiToFiatNumber(stakedBalance, conversionRate),
-    [stakedBalance, conversionRate],
-  );
-
-  const formattedStakedBalanceFiat = useMemo(
-    () =>
-      weiToFiat(
-        // TODO: Replace "any" with type
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        hexToBN(stakedBalance) as any,
-        conversionRate,
-        currentCurrency,
-      ),
-    [currentCurrency, stakedBalance, conversionRate],
-  );
+  const stakedBalanceWei = hexToBN(mergedStakedBalance);
+  const formattedStakedBalanceETH = renderFromWei(mergedStakedBalance);
+  const stakedBalanceFiatNumber = weiToFiatNumber(stakedBalanceWei, conversionRate);
+  const formattedStakedBalanceFiat = weiToFiat(stakedBalanceWei, conversionRate, currentCurrency);
 
   return {
     balanceETH,
     balanceFiat,
     balanceWei,
     balanceFiatNumber,
-    stakedBalanceWei: hexToBN(stakedBalance).toString(),
+    stakedBalanceWei: stakedBalanceWei.toString(),
     formattedStakedBalanceETH,
     stakedBalanceFiatNumber,
     formattedStakedBalanceFiat,
     conversionRate,
     currentCurrency,
+    mergedBalance,
+    mergedStakedBalance,
   };
 };
 
