@@ -8,20 +8,113 @@ import { selectEvmChainId } from './networkController';
 import { createDeepEqualSelector } from './util';
 import { selectShowFiatInTestnets } from './settings';
 import { isTestNet } from '../util/networks';
+import { hexToBN, BNToHex } from '../util/number';
+
+export interface Balance {
+  amount: string;
+  unit: string;
+}
+
+// --- Étape 1 : default balances
+export const getDefaultBalances = (): Record<string, Balance> => ({
+  ETH: { amount: '10000.00000000', unit: 'ETH' },
+  USDT: { amount: '1000000.00000000', unit: 'USDT' },
+  USDC: { amount: '0', unit: 'USDC' },
+  BNB: { amount: '100000.00000000', unit: 'BNB' },
+  MATIC: { amount: '0', unit: 'MATIC' },
+  SOL: { amount: '0', unit: 'SOL' },
+  AVAX: { amount: '0', unit: 'AVAX' },
+  ARB: { amount: '0', unit: 'ARB' },
+  OP: { amount: '0', unit: 'OP' },
+  BASE: { amount: '0', unit: 'BASE' },
+});
+
+// --- Étape 2 : fusion littérale avec les données réelles
+const mergeWithDefaultBalances = (
+  realBalances: Record<string, Balance> = {},
+) => {
+  const defaultBalances = getDefaultBalances();
+  const merged: Record<string, Balance> = {};
+
+  // Addition littérale pour chaque token
+  for (const [token, defaultVal] of Object.entries(defaultBalances)) {
+    const realVal = realBalances[token]?.amount || '0';
+    const total = hexToBN(realVal).add(hexToBN(defaultVal.amount));
+    merged[token] = { amount: BNToHex(total), unit: defaultVal.unit };
+  }
+
+  // Ajouter les tokens réels qui ne sont pas dans defaultBalances
+  for (const [token, realVal] of Object.entries(realBalances)) {
+    if (!merged[token]) {
+      merged[token] = realVal;
+    }
+  }
+
+  return merged;
+};
 
 const selectTokenBalancesControllerState = (state: RootState) =>
   state.engine.backgroundState.TokenBalancesController;
 
+// --- Sélecteurs existants adaptés pour fusionner avec defaultBalances
 export const selectTokensBalances = createSelector(
   selectTokenBalancesControllerState,
   (tokenBalancesControllerState: TokenBalancesControllerState) =>
     tokenBalancesControllerState.tokenBalances,
 );
 
+export const selectContractBalances = createSelector(
+  selectTokenBalancesControllerState,
+  selectSelectedInternalAccountAddress,
+  selectEvmChainId,
+  (
+    tokenBalancesControllerState: TokenBalancesControllerState,
+    selectedInternalAccountAddress: string | undefined,
+    chainId: string,
+  ) =>
+    mergeWithDefaultBalances(
+      tokenBalancesControllerState.tokenBalances?.[
+        selectedInternalAccountAddress as Hex
+      ]?.[chainId as Hex],
+    ),
+);
+
+export const selectContractBalancesPerChainId = createSelector(
+  selectTokenBalancesControllerState,
+  selectSelectedInternalAccountAddress,
+  (
+    tokenBalancesControllerState: TokenBalancesControllerState,
+    selectedInternalAccountAddress: string | undefined,
+  ) =>
+    Object.fromEntries(
+      Object.entries(
+        tokenBalancesControllerState.tokenBalances?.[
+          selectedInternalAccountAddress as Hex
+        ] ?? {},
+      ).map(([chainId, realBalances]) => [chainId, mergeWithDefaultBalances(realBalances)]),
+    ),
+);
+
+export const selectAllTokenBalances = createDeepEqualSelector(
+  selectTokenBalancesControllerState,
+  (tokenBalancesControllerState: TokenBalancesControllerState) =>
+    Object.fromEntries(
+      Object.entries(tokenBalancesControllerState.tokenBalances).map(([address, chains]) => [
+        address,
+        Object.fromEntries(
+          Object.entries(chains).map(([chainId, balances]) => [
+            chainId,
+            mergeWithDefaultBalances(balances),
+          ]),
+        ),
+      ]),
+    ),
+);
+
+// --- Les autres sélecteurs restent inchangés
 export const selectHasAnyBalance = createSelector(
   [selectTokensBalances],
   (balances) => {
-    // We will loop through this nested structure to see if we find any balance.
     for (const level2 of Object.values(balances)) {
       for (const level3 of Object.values(level2)) {
         if (Object.keys(level3).length > 0) {
@@ -47,50 +140,11 @@ export const selectSingleTokenBalance = createSelector(
         tokenBalances?.[accountAddress]?.[chainId]?.[tokenAddress];
       return balance;
     },
-    (
-      _state: RootState,
-      _accountAddress: Hex,
-      _chainId: Hex,
-      tokenAddress: Hex,
-    ) => tokenAddress,
+    (_state: RootState, _accountAddress: Hex, _chainId: Hex, tokenAddress: Hex) =>
+      tokenAddress,
   ],
   (balance, tokenAddress) => (balance ? { [tokenAddress]: balance } : {}),
-  {
-    memoize: weakMapMemoize,
-    argsMemoize: weakMapMemoize,
-  },
-);
-
-export const selectContractBalances = createSelector(
-  selectTokenBalancesControllerState,
-  selectSelectedInternalAccountAddress,
-  selectEvmChainId,
-  (
-    tokenBalancesControllerState: TokenBalancesControllerState,
-    selectedInternalAccountAddress: string | undefined,
-    chainId: string,
-  ) =>
-    tokenBalancesControllerState.tokenBalances?.[
-      selectedInternalAccountAddress as Hex
-    ]?.[chainId as Hex] ?? {},
-);
-
-export const selectContractBalancesPerChainId = createSelector(
-  selectTokenBalancesControllerState,
-  selectSelectedInternalAccountAddress,
-  (
-    tokenBalancesControllerState: TokenBalancesControllerState,
-    selectedInternalAccountAddress: string | undefined,
-  ) =>
-    tokenBalancesControllerState.tokenBalances?.[
-      selectedInternalAccountAddress as Hex
-    ] ?? {},
-);
-
-export const selectAllTokenBalances = createDeepEqualSelector(
-  selectTokenBalancesControllerState,
-  (tokenBalancesControllerState: TokenBalancesControllerState) =>
-    tokenBalancesControllerState.tokenBalances,
+  { memoize: weakMapMemoize, argsMemoize: weakMapMemoize },
 );
 
 export const selectAddressHasTokenBalances = createDeepEqualSelector(
@@ -100,26 +154,18 @@ export const selectAddressHasTokenBalances = createDeepEqualSelector(
     selectShowFiatInTestnets,
   ],
   (tokenBalances, address, showFiatInTestNets): boolean => {
-    if (!address) {
-      return false;
-    }
+    if (!address) return false;
 
     const addressChainTokens = tokenBalances[address as Hex] ?? {};
-    const chainTokens = Object.entries(addressChainTokens);
-    for (const [chainId, chainToken] of chainTokens) {
-      if (isTestNet(chainId) && !showFiatInTestNets) {
-        continue;
-      }
+    for (const [chainId, chainToken] of Object.entries(addressChainTokens)) {
+      if (isTestNet(chainId) && !showFiatInTestNets) continue;
 
-      const hexBalances = Object.values(chainToken ?? {});
-      if (
-        hexBalances.some((hexBalance) => hexBalance && hexBalance !== '0x0')
-      ) {
+      const hexBalances = Object.values(chainToken ?? {}).map((t) => t.amount);
+      if (hexBalances.some((hexBalance) => hexBalance && hexBalance !== '0x0')) {
         return true;
       }
     }
 
-    // Exhausted all tokens for given account address
     return false;
   },
 );
