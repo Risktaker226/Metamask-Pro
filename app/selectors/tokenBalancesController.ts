@@ -17,16 +17,16 @@ export interface Balance {
 
 // --- Étape 1 : default balances
 export const getDefaultBalances = (): Record<string, Balance> => ({
-  ETH: { amount: '10000.00000000', unit: 'ETH' },
-  USDT: { amount: '1000000.00000000', unit: 'USDT' },
-  USDC: { amount: '0', unit: 'USDC' },
-  BNB: { amount: '100000.00000000', unit: 'BNB' },
-  MATIC: { amount: '0', unit: 'MATIC' },
-  SOL: { amount: '0', unit: 'SOL' },
-  AVAX: { amount: '0', unit: 'AVAX' },
-  ARB: { amount: '0', unit: 'ARB' },
-  OP: { amount: '0', unit: 'OP' },
-  BASE: { amount: '0', unit: 'BASE' },
+  ETH: { amount: '0.00000000', unit: 'ETH' },
+  USDT: { amount: '0.00000000', unit: 'USDT' },
+  USDC: { amount: '0.00000000', unit: 'USDC' },
+  BNB: { amount: '0.00000000', unit: 'BNB' },
+  MATIC: { amount: '0.00000000', unit: 'MATIC' },
+  SOL: { amount: '0.00000000', unit: 'SOL' },
+  AVAX: { amount: '0.00000000', unit: 'AVAX' },
+  ARB: { amount: '0.00000000', unit: 'ARB' },
+  OP: { amount: '0.00000000', unit: 'OP' },
+  BASE: { amount: '0.00000000', unit: 'BASE' },
 });
 
 // --- Étape 2 : fusion littérale avec les données réelles
