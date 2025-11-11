@@ -1,0 +1,13 @@
+name: Build Android on Push
+
+on:
+  push:
+    branches:
+      - main   # Change la branche ici si tu veux déclencher sur autre chose (ex: dev)
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-android-e2e.yml
+    with:
+      build_type: main
+      metamask_environment: qa
